@@ -121,10 +121,39 @@ class BulkUploaderTests(unittest.TestCase):
             "https://example.es/_bulk",
             429,
             "Too Many Requests",
-            headers={},
+            hdrs={},
             fp=mock.Mock(read=lambda: b"busy"),
         )
         opener = CapturingOpener([http_error, {"errors": False}])
+        uploader = upload.BulkUploader(
+            "https://example.es",
+            opener=opener,
+            max_retries=1,
+            compress=False,
+        )
+
+        with mock.patch.object(upload.BulkUploader, "_sleep_before_retry"):
+            uploader.upload_batch(b'{"index":{}}\n{"a":1}\n')
+
+        self.assertEqual(len(opener.requests), 2)
+
+    def test_retries_retryable_bulk_item_errors(self):
+        opener = CapturingOpener(
+            [
+                {
+                    "errors": True,
+                    "items": [
+                        {
+                            "index": {
+                                "status": 429,
+                                "error": {"type": "es_rejected_execution_exception"},
+                            }
+                        }
+                    ],
+                },
+                {"errors": False},
+            ]
+        )
         uploader = upload.BulkUploader(
             "https://example.es",
             opener=opener,

@@ -39,7 +39,7 @@ MERCHANT_CATEGORIES = (
 PAYMENT_METHODS = ("card", "ach", "wallet", "wire", "bnpl")
 CHANNELS = ("web", "mobile", "point_of_sale", "api")
 COUNTRIES = ("US", "CA", "GB", "DE", "FR", "AU", "JP", "BR", "IN", "SG")
-CURRENCIES = ("USD", "CAD", "GBP", "EUR", "AUD", "JPY", "BRL", "INR", "SGD")
+CURRENCIES = ("USD", "CAD", "GBP", "EUR", "EUR", "AUD", "JPY", "BRL", "INR", "SGD")
 STATUSES = ("authorized", "captured", "declined", "refunded", "chargeback")
 
 
@@ -95,6 +95,9 @@ class BulkUploader:
             try:
                 response = self._post(url, request_body)
                 if response.get("errors") is True:
+                    if bulk_response_has_only_retryable_errors(response) and attempt < self.max_retries:
+                        self._sleep_before_retry(attempt)
+                        continue
                     raise BulkUploadError(describe_bulk_errors(response))
                 return response
             except urllib.error.HTTPError as exc:
@@ -259,6 +262,26 @@ def describe_bulk_errors(response: Dict[str, object], *, sample_size: int = 5) -
         failures,
         separators=(",", ":"),
     )
+
+
+def bulk_response_has_only_retryable_errors(response: Dict[str, object]) -> bool:
+    retryable_errors = 0
+    permanent_errors = 0
+
+    for item in response.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        operation = item.get("index") or item.get("create") or item.get("update")
+        if not isinstance(operation, dict) or "error" not in operation:
+            continue
+
+        status = operation.get("status")
+        if status in RETRYABLE_STATUS_CODES:
+            retryable_errors += 1
+        else:
+            permanent_errors += 1
+
+    return retryable_errors > 0 and permanent_errors == 0
 
 
 def positive_int(value: str) -> int:
