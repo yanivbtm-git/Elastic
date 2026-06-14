@@ -1,0 +1,42 @@
+name: Jobs Pipeline
+
+on:
+  schedule:
+    - cron: "0 6 * * 0-4"
+    - cron: "0 14 * * 0-4"
+    - cron: "0 22 * * 0-4"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jobs-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run AI jobs pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_OPUS_MODEL: ${{ secrets.ANTHROPIC_OPUS_MODEL }}
+          ANTHROPIC_HAIKU_MODEL: ${{ secrets.ANTHROPIC_HAIKU_MODEL }}
+        run: |
+          python3 run_pipeline.py --auto-push

@@ -84,6 +84,18 @@
       "require_location_match": true
     }
   },
+  "ats_sources": {
+    "greenhouse_boards": [],
+    "lever_companies": [],
+    "ashby_organizations": []
+  },
+  "automation": {
+    "github_actions_cron_utc": [
+      "0 6 * * 0-4",
+      "0 14 * * 0-4",
+      "0 22 * * 0-4"
+    ]
+  },
   "ai_prompts": {
     "search_prompt_template": "Find CURRENTLY OPEN jobs (posted last 30 days) for: {roles}. Each URL must be a DIRECT link to a specific posting. Return 8-15 as JSON: {company, title, location, url, posted, description}",
     "scoring_prompt_template": "Evaluate this job for [profile]. Return JSON only: {fit_score 1-10, score_reason, ai_opener, location_ok}. If location not OK -> 0."
