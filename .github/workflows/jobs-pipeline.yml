@@ -35,8 +35,8 @@ jobs:
 
       - name: Run AI jobs pipeline
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_OPUS_MODEL: ${{ secrets.ANTHROPIC_OPUS_MODEL }}
-          ANTHROPIC_HAIKU_MODEL: ${{ secrets.ANTHROPIC_HAIKU_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_PRO_MODEL: ${{ secrets.GEMINI_PRO_MODEL }}
+          GEMINI_FLASH_MODEL: ${{ secrets.GEMINI_FLASH_MODEL }}
         run: |
           python3 run_pipeline.py --auto-push

@@ -2,9 +2,9 @@
 """Automated AI job search pipeline.
 
 Pipeline stages:
-1. search_jobs()      -> Claude Opus + web search
+1. search_jobs()      -> Gemini + web search
 2. ats_scraper()      -> Greenhouse / Lever / Ashby public APIs
-3. score_jobs()       -> Claude Haiku scoring
+3. score_jobs()       -> Gemini scoring
 4. filter_jobs()      -> score >= 4 + location match + posted <= 30 days
 5. save               -> scored_jobs.json (single source of truth)
 6. build              -> docs/index.html from template
@@ -231,28 +231,42 @@ def save_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def _anthropic_messages(model: str, prompt: str, system: str = "", temperature: float = 0.2, max_tokens: int = 1400) -> str:
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+def _gemini_generate(
+    model: str,
+    prompt: str,
+    temperature: float = 0.2,
+    max_tokens: int = 1400,
+) -> str:
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not set")
+        raise RuntimeError("GEMINI_API_KEY not set")
 
+    endpoint = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{urllib.parse.quote(model, safe='')}:"  # model name in path
+        f"generateContent?key={urllib.parse.quote(api_key, safe='')}"
+    )
     payload: dict[str, Any] = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "messages": [{"role": "user", "content": prompt}],
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+        },
     }
-    if system:
-        payload["system"] = system
-
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-    }
-    data = _http_post_json("https://api.anthropic.com/v1/messages", payload, headers=headers)
-    chunks = data.get("content", [])
-    texts = [chunk.get("text", "") for chunk in chunks if isinstance(chunk, dict)]
-    return "\n".join(t for t in texts if t).strip()
+    data = _http_post_json(endpoint, payload, headers={"content-type": "application/json"})
+    texts: list[str] = []
+    for candidate in data.get("candidates", []):
+        parts = ((candidate or {}).get("content") or {}).get("parts", [])
+        for part in parts:
+            text = (part or {}).get("text", "")
+            if text:
+                texts.append(text)
+    return "\n".join(texts).strip()
 
 
 def web_search(query: str, max_results: int = 10) -> list[dict[str, str]]:
@@ -356,11 +370,11 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
     )
     # Prompt text includes literal JSON braces, so we avoid str.format.
     main_prompt = prompt_template.replace("{roles}", ", ".join(roles))
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        _log("ANTHROPIC_API_KEY missing; using heuristic search extraction.")
+    if not os.getenv("GEMINI_API_KEY"):
+        _log("GEMINI_API_KEY missing; using heuristic search extraction.")
         return _heuristic_jobs_from_hits(dedup_hits, roles, location_scope)
 
-    model = os.getenv("ANTHROPIC_OPUS_MODEL", "claude-opus-4-1-20250805")
+    model = os.getenv("GEMINI_PRO_MODEL", "gemini-1.5-pro-latest")
     prompt = (
         f"{main_prompt}\n\n"
         "Use these web search candidates as context and only keep likely direct posting URLs.\n"
@@ -368,14 +382,14 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
         f"Candidates JSON:\n{json.dumps(dedup_hits, ensure_ascii=False)}"
     )
     try:
-        raw = _anthropic_messages(model=model, prompt=prompt, temperature=0.1, max_tokens=2200)
+        raw = _gemini_generate(model=model, prompt=prompt, temperature=0.1, max_tokens=2200)
         parsed = _extract_json_block(raw)
         if isinstance(parsed, dict):
             parsed = parsed.get("jobs", [])
         if not isinstance(parsed, list):
             raise ValueError("Expected list from Opus search output")
     except Exception as exc:  # pylint: disable=broad-except
-        _log(f"Claude search failed, falling back to heuristics: {exc}")
+        _log(f"Gemini search failed, falling back to heuristics: {exc}")
         return _heuristic_jobs_from_hits(dedup_hits, roles, location_scope)
 
     normalized: list[dict[str, Any]] = []
@@ -524,7 +538,7 @@ def _fallback_score(job: dict[str, Any], roles: list[str], prefs: dict[str, Any]
     if not location_ok:
         score = 0
 
-    reason = "Keyword-based fallback score (no Anthropic API key configured)."
+    reason = "Keyword-based fallback score (no Gemini API key configured)."
     opener = (
         f"Your background appears relevant for {job.get('title', 'this role')} at "
         f"{job.get('company', 'this company')}."
@@ -537,7 +551,7 @@ def _fallback_score(job: dict[str, Any], roles: list[str], prefs: dict[str, Any]
     }
 
 
-def _score_with_claude(
+def _score_with_gemini(
     job: dict[str, Any],
     profile_text: str,
     prompt_template: str,
@@ -548,7 +562,7 @@ def _score_with_claude(
         f"Profile:\n{profile_text}\n\n"
         f"Job:\n{json.dumps(job, ensure_ascii=False)}"
     )
-    raw = _anthropic_messages(model=model, prompt=prompt, temperature=0.1, max_tokens=900)
+    raw = _gemini_generate(model=model, prompt=prompt, temperature=0.1, max_tokens=900)
     parsed = _extract_json_block(raw)
     if not isinstance(parsed, dict):
         raise ValueError("Expected JSON object for score payload")
@@ -565,14 +579,14 @@ def score_jobs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text:
         config.get("ai_prompts", {}).get("scoring_prompt_template", DEFAULT_SCORE_PROMPT)
     )
     scored: list[dict[str, Any]] = []
-    use_ai = bool(os.getenv("ANTHROPIC_API_KEY"))
-    model = os.getenv("ANTHROPIC_HAIKU_MODEL", "claude-3-5-haiku-latest")
+    use_ai = bool(os.getenv("GEMINI_API_KEY"))
+    model = os.getenv("GEMINI_FLASH_MODEL", "gemini-1.5-flash-latest")
 
     for idx, job in enumerate(jobs, start=1):
         payload: dict[str, Any]
         if use_ai:
             try:
-                payload = _score_with_claude(job, profile_text, prompt_template, model=model)
+                payload = _score_with_gemini(job, profile_text, prompt_template, model=model)
             except Exception as exc:  # pylint: disable=broad-except
                 _log(f"Scoring fallback for job {idx}/{len(jobs)}: {exc}")
                 payload = _fallback_score(job, roles, prefs)

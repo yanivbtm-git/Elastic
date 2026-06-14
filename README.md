@@ -2,8 +2,8 @@
 
 Automated AI-assisted job search pipeline and tracker with:
 
-- Claude Opus web job discovery + ATS scraping
-- Claude Haiku fit scoring
+- Gemini web job discovery + ATS scraping
+- Gemini fit scoring
 - strict source-of-truth merge behavior for `scored_jobs.json`
 - GitHub Actions automation (scheduled refresh + Pages deploy)
 - Material 3, mobile-first tracker PWA in `docs/index.html`
@@ -44,9 +44,9 @@ python3 run_pipeline.py --auto-push
 
 Set in GitHub repository secrets:
 
-- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
 - optional model overrides:
-  - `ANTHROPIC_OPUS_MODEL`
-  - `ANTHROPIC_HAIKU_MODEL`
+  - `GEMINI_PRO_MODEL`
+  - `GEMINI_FLASH_MODEL`
 
 Without API key, pipeline still runs with heuristic search parsing and fallback scoring.
