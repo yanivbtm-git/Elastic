@@ -190,6 +190,13 @@
               <input id="assistModelInput" class="grow" placeholder="Assistant model (default: gemini-1.5-flash-latest)" />
               <button id="saveSettingsBtn">Save settings</button>
             </div>
+            <div class="row" style="margin-top:8px">
+              <label style="display:flex;align-items:center;gap:8px">
+                <input id="shareFullProfileInput" type="checkbox" />
+                Allow full profile sharing in AI prompts (off by default)
+              </label>
+            </div>
+            <small class="muted">When disabled, AI prompts use a redacted skills/experience summary without personal contact details.</small>
           </div>
         </details>
       </div>
@@ -236,6 +243,8 @@
     const APP_KEY = "ai-job-tracker-v1";
     const INITIAL_JOBS = __INITIAL_JOBS_JSON__;
     const PROFILE_TEXT = __PROFILE_TEXT__;
+    const PROFILE_SAFE_TEXT = __PROFILE_SAFE_TEXT__;
+    const UI_PROFILE_OPT_IN_DEFAULT = __UI_PROFILE_OPT_IN_DEFAULT__;
     const STATUS_FLOW = ["saved", "applied", "interview", "offer", "rejected"];
 
     const state = loadState();
@@ -258,18 +267,26 @@
         settings: {
           geminiApiKey: "",
           extractModel: "gemini-1.5-pro-latest",
-          assistModel: "gemini-1.5-flash-latest"
+          assistModel: "gemini-1.5-flash-latest",
+          shareFullProfile: UI_PROFILE_OPT_IN_DEFAULT
         },
         ui: { tab: "jobs" }
       };
     }
 
     function loadState() {
+      const base = defaultState();
       try {
         const parsed = JSON.parse(localStorage.getItem(APP_KEY) || "null");
-        return parsed && typeof parsed === "object" ? { ...defaultState(), ...parsed } : defaultState();
+        if (!parsed || typeof parsed !== "object") return base;
+        return {
+          ...base,
+          ...parsed,
+          settings: { ...base.settings, ...(parsed.settings || {}) },
+          ui: { ...base.ui, ...(parsed.ui || {}) }
+        };
       } catch {
-        return defaultState();
+        return base;
       }
     }
 
@@ -325,6 +342,7 @@
       document.getElementById("apiKeyInput").value = state.settings.geminiApiKey || "";
       document.getElementById("extractModelInput").value = state.settings.extractModel || "";
       document.getElementById("assistModelInput").value = state.settings.assistModel || "";
+      document.getElementById("shareFullProfileInput").checked = !!state.settings.shareFullProfile;
       switchTab(state.ui.tab || "jobs");
     }
 
@@ -332,8 +350,14 @@
       state.settings.geminiApiKey = document.getElementById("apiKeyInput").value.trim();
       state.settings.extractModel = document.getElementById("extractModelInput").value.trim() || "gemini-1.5-pro-latest";
       state.settings.assistModel = document.getElementById("assistModelInput").value.trim() || "gemini-1.5-flash-latest";
+      state.settings.shareFullProfile = !!document.getElementById("shareFullProfileInput").checked;
       saveState();
       alert("AI settings saved locally.");
+    }
+
+    function profileForAiPrompt() {
+      if (state.settings.shareFullProfile) return PROFILE_TEXT;
+      return PROFILE_SAFE_TEXT || "";
     }
 
     function scoreClass(score) {
@@ -540,12 +564,13 @@
       }
 
       const latestStage = (job.interview_rounds || []).at(-1)?.stage || job.status || "saved";
+      const profileContext = profileForAiPrompt();
       const prompts = {
-        "cover-letter": `Write a tailored cover letter for this role. Keep it concise and specific.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
-        "interview-prep": `Generate interview prep for this role: exactly 8 likely questions, talking points for each, and smart questions to ask the interviewer.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
-        "voice-sim": `Run a stage-aware voice interview simulation script for stage "${latestStage}". Include opener, 6 questions, ideal answer structure, and feedback rubric.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
+        "cover-letter": `Write a tailored cover letter for this role. Keep it concise and specific.\nProfile:\n${profileContext}\nJob:\n${JSON.stringify(job)}`,
+        "interview-prep": `Generate interview prep for this role: exactly 8 likely questions, talking points for each, and smart questions to ask the interviewer.\nProfile:\n${profileContext}\nJob:\n${JSON.stringify(job)}`,
+        "voice-sim": `Run a stage-aware voice interview simulation script for stage "${latestStage}". Include opener, 6 questions, ideal answer structure, and feedback rubric.\nProfile:\n${profileContext}\nJob:\n${JSON.stringify(job)}`,
         "dossier": `Create a company dossier: product summary, funding/news/culture insights, likely strategic priorities, smart interview questions, and potential red flags.\nJob:\n${JSON.stringify(job)}`,
-        "cv-tailor": `Tailor this CV profile to the job. Return: (1) summary rewrite, (2) 8 bullet improvements, (3) key skill/keyword alignment.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
+        "cv-tailor": `Tailor this CV profile to the job. Return: (1) summary rewrite, (2) 8 bullet improvements, (3) key skill/keyword alignment.\nProfile:\n${profileContext}\nJob:\n${JSON.stringify(job)}`,
         "emotional": `You are a supportive performance coach. Give context-aware emotional support for this job and stage "${latestStage}". Include mindset reset, practical next action, and confidence script.\nNotes:\n${job.notes || "(none)"}\nJob:\n${JSON.stringify(job)}`
       };
 
@@ -564,7 +589,7 @@
         alert("Save your Gemini API key in AI settings first.");
         return;
       }
-      const prompt = `Act as a mental coach for an active job search. Use practical CBT-style support and clear actions.\nCandidate profile:\n${PROFILE_TEXT}\nCurrent context:\n${context || "(no extra context)"}`;
+      const prompt = `Act as a mental coach for an active job search. Use practical CBT-style support and clear actions.\nCandidate profile:\n${profileForAiPrompt()}\nCurrent context:\n${context || "(no extra context)"}`;
       openModal("Generating support...", "Please wait...");
       try {
         const response = await callGemini(state.settings.assistModel, prompt, 0.5, 1200);

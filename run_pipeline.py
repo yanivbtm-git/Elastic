@@ -59,6 +59,14 @@ USER_STATE_FIELDS = {
     "manual",
 }
 
+ALLOWED_PROFILE_SECTIONS = (
+    "professional summary",
+    "core strengths",
+    "skills snapshot",
+    "relevant experience highlights",
+    "certifications and education",
+)
+
 
 def _log(msg: str) -> None:
     print(f"[pipeline] {msg}")
@@ -229,6 +237,67 @@ def load_json(path: Path, default: Any) -> Any:
 def save_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _redact_pii(text: str) -> str:
+    redacted = text
+    redacted = re.sub(r"[\w.+-]+@[\w.-]+\.\w+", "[redacted-email]", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r"\+?\d[\d\s().-]{7,}\d", "[redacted-phone]", redacted)
+    return redacted
+
+
+def _extract_safe_profile(full_profile_text: str) -> str:
+    lines = full_profile_text.splitlines()
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        heading = None
+        if line.startswith("## "):
+            heading = line[3:].strip().lower()
+        elif line.startswith("# "):
+            heading = line[2:].strip().lower()
+
+        if heading is not None:
+            current = heading
+            sections.setdefault(current, [])
+            continue
+        if current is not None:
+            sections[current].append(line)
+
+    selected_chunks: list[str] = []
+    for sec_name in ALLOWED_PROFILE_SECTIONS:
+        body_lines = sections.get(sec_name, [])
+        body = "\n".join(body_lines).strip()
+        if body:
+            selected_chunks.append(f"## {sec_name.title()}\n{body}")
+
+    if not selected_chunks:
+        # Fallback when headings are missing: strip obvious PII and keep content.
+        selected_chunks = [full_profile_text]
+
+    safe_text = "\n\n".join(selected_chunks).strip()
+    safe_text = _redact_pii(safe_text)
+    # Drop any explicit contact lines that slipped in.
+    safe_lines = [
+        ln for ln in safe_text.splitlines()
+        if not re.search(r"(phone|email|@)", ln, flags=re.IGNORECASE)
+    ]
+    safe_text = "\n".join(safe_lines).strip()
+    return safe_text
+
+
+def _privacy_settings(config: dict[str, Any]) -> dict[str, Any]:
+    defaults = {
+        "redact_personal_data": True,
+        "pipeline_profile_mode": "summary_only",
+        "ui_full_profile_opt_in_default": False,
+    }
+    cfg = config.get("privacy", {})
+    if not isinstance(cfg, dict):
+        return defaults
+    return {**defaults, **cfg}
 
 
 def _gemini_generate(
@@ -673,13 +742,15 @@ def merge_jobs(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -
     return merged
 
 
-def build_docs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text: str) -> None:
+def build_docs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text: str, safe_profile_text: str) -> None:
     if not TEMPLATE_PATH.exists():
         raise FileNotFoundError(f"Missing template file: {TEMPLATE_PATH}")
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     output = (
         template.replace("__INITIAL_JOBS_JSON__", json.dumps(jobs, ensure_ascii=False))
         .replace("__PROFILE_TEXT__", json.dumps(profile_text))
+        .replace("__PROFILE_SAFE_TEXT__", json.dumps(safe_profile_text))
+        .replace("__UI_PROFILE_OPT_IN_DEFAULT__", json.dumps(_privacy_settings(config).get("ui_full_profile_opt_in_default", False)))
         .replace("__GENERATED_AT__", _utcnow_iso())
         .replace(
             "__CANDIDATE_NAME__",
@@ -733,6 +804,14 @@ def main() -> int:
 
     config = load_json(CONFIG_PATH, default={})
     profile_text = PROFILE_PATH.read_text(encoding="utf-8") if PROFILE_PATH.exists() else ""
+    safe_profile_text = _extract_safe_profile(profile_text)
+    privacy = _privacy_settings(config)
+    use_safe_profile = bool(privacy.get("redact_personal_data", True))
+    if privacy.get("pipeline_profile_mode") == "summary_only" and use_safe_profile:
+        score_profile_text = safe_profile_text
+        _log("Privacy mode enabled: scoring with safe profile summary only.")
+    else:
+        score_profile_text = _redact_pii(profile_text) if use_safe_profile else profile_text
     existing_jobs = load_json(SCORED_JOBS_PATH, default=[])
     if not isinstance(existing_jobs, list):
         existing_jobs = []
@@ -749,7 +828,7 @@ def main() -> int:
     _log(f"Discovered {len(discovered)} unique jobs.")
 
     _log("Running score_jobs() ...")
-    scored = score_jobs(config, discovered, profile_text)
+    scored = score_jobs(config, discovered, score_profile_text)
     _log(f"Scored {len(scored)} jobs.")
 
     _log("Running filter_jobs() ...")
@@ -762,7 +841,7 @@ def main() -> int:
     save_json(SCORED_JOBS_PATH, merged)
     _log(f"Saved source of truth: {SCORED_JOBS_PATH}")
 
-    build_docs(config, merged, profile_text)
+    build_docs(config, merged, profile_text, safe_profile_text)
     _log(f"Built tracker: {DOCS_INDEX_PATH}")
 
     if args.auto_push or os.getenv("AUTO_GIT_PUSH") == "1":
