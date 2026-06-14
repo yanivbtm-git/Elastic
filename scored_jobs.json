@@ -11,9 +11,9 @@
     "score_reason": "Keyword-based fallback score (no Gemini API key configured).",
     "ai_opener": "Your background appears relevant for Senior Applied AI Engineer at Forter.",
     "location_ok": true,
-    "updated_at": "2026-06-14T17:04:22+00:00",
+    "updated_at": "2026-06-14T17:23:40+00:00",
     "job_id": "290724a96b0c4186",
-    "added_at": "2026-06-14T17:04:00+00:00",
-    "status": "saved"
+    "status": "saved",
+    "added_at": "2026-06-14T17:04:00+00:00"
   }
 ]
