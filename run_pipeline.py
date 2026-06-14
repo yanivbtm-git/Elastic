@@ -354,7 +354,8 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
     prompt_template = (
         config.get("ai_prompts", {}).get("search_prompt_template", DEFAULT_SEARCH_PROMPT)
     )
-    main_prompt = prompt_template.format(roles=", ".join(roles))
+    # Prompt text includes literal JSON braces, so we avoid str.format.
+    main_prompt = prompt_template.replace("{roles}", ", ".join(roles))
     if not os.getenv("ANTHROPIC_API_KEY"):
         _log("ANTHROPIC_API_KEY missing; using heuristic search extraction.")
         return _heuristic_jobs_from_hits(dedup_hits, roles, location_scope)

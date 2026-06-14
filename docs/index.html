@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#6750a4" />
+  <title>AI Job Search Tracker</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <style>
+    :root {
+      --md-primary: #6750a4;
+      --md-on-primary: #ffffff;
+      --md-surface: #fef7ff;
+      --md-surface-container: #f3edf7;
+      --md-outline: #79747e;
+      --md-text: #1d1b20;
+      --md-good: #1b873f;
+      --md-warn: #c46a00;
+      --md-bad: #ba1a1a;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Roboto, Arial, sans-serif;
+      background: var(--md-surface);
+      color: var(--md-text);
+      padding-bottom: 84px;
+    }
+    .appbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--md-primary);
+      color: var(--md-on-primary);
+      padding: 14px 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.18);
+    }
+    .appbar h1 { margin: 0; font-size: 1.08rem; font-weight: 600; }
+    .appbar small { opacity: .9; display: block; margin-top: 2px; }
+    .container { padding: 12px; max-width: 1100px; margin: 0 auto; }
+    .panel {
+      background: var(--md-surface-container);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid #d6d0db;
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    input, textarea, select, button {
+      font: inherit;
+      border-radius: 12px;
+      border: 1px solid #c8c2cc;
+      padding: 10px 12px;
+      background: #fff;
+      color: inherit;
+    }
+    textarea { width: 100%; min-height: 72px; resize: vertical; }
+    button {
+      cursor: pointer;
+      background: #ece6f0;
+      border-color: #d0c7db;
+    }
+    button.primary {
+      background: var(--md-primary);
+      color: #fff;
+      border-color: #5a4395;
+    }
+    .grow { flex: 1; min-width: 180px; }
+    .job-card {
+      background: #fff;
+      border: 1px solid #d8d1dc;
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .title { margin: 0; font-size: 1rem; line-height: 1.35; }
+    .meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .chip {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: .78rem;
+      background: #ece6f0;
+      border: 1px solid #d3cbe0;
+    }
+    .score-strong { background: #ddf8e5; border-color: #9bd3ac; color: #125f2d; }
+    .score-medium { background: #fff2d8; border-color: #e5c283; color: #7d4e00; }
+    .score-low { background: #ffe1e1; border-color: #e59e9e; color: #7d1010; }
+    .ai-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 10px;
+    }
+    .interview-item {
+      border: 1px solid #e0d9e5;
+      border-radius: 10px;
+      padding: 8px;
+      margin: 6px 0;
+      background: #fcf9ff;
+      font-size: .92rem;
+    }
+    .bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #fff;
+      border-top: 1px solid #d0c7d8;
+      display: flex;
+      z-index: 20;
+    }
+    .bottom-nav button {
+      flex: 1;
+      border: none;
+      border-radius: 0;
+      padding: 12px 8px;
+      background: #fff;
+    }
+    .bottom-nav button.active {
+      background: #ede7f7;
+      color: #452c84;
+      font-weight: 600;
+    }
+    .hidden { display: none !important; }
+    .muted { color: #5f5b66; font-size: .9rem; }
+    .funnel-row { margin: 8px 0; }
+    .funnel-bar {
+      height: 14px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #6750a4, #b6a7dd);
+    }
+    #modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .48);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      z-index: 40;
+    }
+    #modal .sheet {
+      width: min(880px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px;
+    }
+    #modalOutput {
+      white-space: pre-wrap;
+      line-height: 1.4;
+      background: #faf7ff;
+      border: 1px solid #ddd5ea;
+      border-radius: 12px;
+      padding: 10px;
+      min-height: 140px;
+    }
+    a { color: #27408b; }
+    @media (min-width: 900px) {
+      .ai-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <header class="appbar">
+    <h1>AI Job Search Engine - Yaniv Ben Tovim</h1>
+    <small>Generated: 2026-06-14T16:23:05+00:00</small>
+  </header>
+
+  <main class="container">
+    <section id="jobsTab">
+      <div class="panel">
+        <div class="row">
+          <input id="jobUrlInput" class="grow" placeholder="Paste a job posting URL to add instantly" />
+          <button id="addByUrlBtn" class="primary">Add by URL (Claude)</button>
+        </div>
+        <small class="muted">Jobs added here are stored locally in your browser state immediately.</small>
+      </div>
+
+      <div class="panel">
+        <details>
+          <summary><strong>AI settings</strong> (required for AI buttons)</summary>
+          <div style="margin-top:10px">
+            <div class="row">
+              <input id="apiKeyInput" class="grow" type="password" placeholder="Anthropic API key (stored in localStorage)" />
+              <input id="extractModelInput" class="grow" placeholder="Extract model (default: claude-opus-4-1-20250805)" />
+              <input id="assistModelInput" class="grow" placeholder="Assistant model (default: claude-3-5-haiku-latest)" />
+              <button id="saveSettingsBtn">Save settings</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div id="jobsList"></div>
+    </section>
+
+    <section id="analyticsTab" class="hidden">
+      <div class="panel">
+        <h2 style="margin-top:0">Pipeline + Application Analytics</h2>
+        <div id="analyticsContent"></div>
+      </div>
+    </section>
+
+    <section id="coachTab" class="hidden">
+      <div class="panel">
+        <h2 style="margin-top:0">Global Emotional Support</h2>
+        <p class="muted">Use this as a mental coach across all jobs, regardless of stage.</p>
+        <textarea id="coachContext" placeholder="How are you feeling right now, and what support do you need?"></textarea>
+        <div class="row">
+          <button id="coachGenerateBtn" class="primary">Generate Support Plan</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button data-tab="jobs" class="active">Jobs</button>
+    <button data-tab="analytics">Analytics</button>
+    <button data-tab="coach">Coach</button>
+  </nav>
+
+  <div id="modal" class="hidden">
+    <div class="sheet">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h3 id="modalTitle" style="margin:0">AI Output</h3>
+        <button id="closeModalBtn">Close</button>
+      </div>
+      <div id="modalOutput"></div>
+    </div>
+  </div>
+
+  <script>
+    const APP_KEY = "ai-job-tracker-v1";
+    const INITIAL_JOBS = [];
+    const PROFILE_TEXT = "# Candidate Profile - Yaniv Ben Tovim\n\n## Target Roles\n- Project Manager\n- Customer Success\n- Customer Architect\n\n## Work Preferences\n- Work mode: Remote, Hybrid, or Onsite\n- Location scope: Israel only (center region focus)\n\n## Professional Summary\nCustomer-facing technical leader with 20 years of experience across project management, customer success, enterprise software delivery, and solution leadership. Strong background in SaaS, cybersecurity, fraud prevention, and fintech environments, with repeated success in onboarding enterprise customers, driving adoption, leading API-heavy implementations, and aligning technical execution to business outcomes.\n\n## Core Strengths\n- Stakeholder communication with senior and executive audiences\n- Program and project leadership in complex enterprise environments\n- Risk management and cross-functional execution\n- Go-to-market alignment and long-term account growth\n- Translating business goals into technical implementation plans\n\n## Skills Snapshot\n- **Methodologies:** Agile, Scrum, Kanban\n- **Tools:** Jira, MS Project, Confluence, Salesforce, GitHub Copilot, Cursor\n- **Tech Stack:** Azure, AWS, Java, SQL, Oracle, Elasticsearch, Kibana, Linux, UML, HTML, CSS, REST APIs, JSON, Bash\n- **Domains:** Cybersecurity, Risk & Fraud Detection, Fintech, Enterprise Software\n\n## Relevant Experience Highlights\n- Led customer lifecycle delivery for enterprise SaaS accounts with ownership of onboarding, adoption, and business outcomes.\n- Managed end-to-end implementation programs including API integrations and cross-team coordination across Product, R&D, Sales, DevOps, QA, Finance, and Legal.\n- Served as trusted technical advisor for strategic accounts, handling critical issues and supporting retention and expansion.\n- Combined delivery rigor with customer advocacy to improve adoption, value realization, and account stability.\n\n## Certifications and Education\n- AWS Certified Solutions Architect - Associate\n- Microsoft Certified: Azure Fundamentals (AZ-900)\n- PMP (Project Management Professional)\n- Bachelor's degree in Management and Information Systems\n\n";
+    const STATUS_FLOW = ["saved", "applied", "interview", "offer", "rejected"];
+
+    const state = loadState();
+    bootstrap();
+
+    function bootstrap() {
+      mergePipelineJobs();
+      hydrateSettings();
+      renderJobs();
+      renderAnalytics();
+      bindEvents();
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("sw.js").catch(() => null);
+      }
+    }
+
+    function defaultState() {
+      return {
+        jobs: [],
+        settings: {
+          anthropicApiKey: "",
+          extractModel: "claude-opus-4-1-20250805",
+          assistModel: "claude-3-5-haiku-latest"
+        },
+        ui: { tab: "jobs" }
+      };
+    }
+
+    function loadState() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(APP_KEY) || "null");
+        return parsed && typeof parsed === "object" ? { ...defaultState(), ...parsed } : defaultState();
+      } catch {
+        return defaultState();
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(APP_KEY, JSON.stringify(state));
+    }
+
+    function mergePipelineJobs() {
+      const localByUrl = new Map((state.jobs || []).filter(j => j.url).map(j => [j.url, j]));
+      const merged = [];
+
+      for (const base of INITIAL_JOBS) {
+        const local = localByUrl.get(base.url) || {};
+        merged.push({
+          ...base,
+          status: local.status || base.status || base.initial_status || "saved",
+          notes: local.notes || base.notes || "",
+          interview_rounds: local.interview_rounds || base.interview_rounds || [],
+          status_history: local.status_history || base.status_history || [],
+          added_at: local.added_at || base.added_at || new Date().toISOString()
+        });
+        localByUrl.delete(base.url);
+      }
+
+      // Keep local-only jobs (for "Add by URL" manual entries).
+      for (const orphan of localByUrl.values()) merged.push(orphan);
+
+      state.jobs = merged;
+      saveState();
+    }
+
+    function bindEvents() {
+      document.querySelectorAll(".bottom-nav button").forEach(btn => {
+        btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+      });
+      document.getElementById("addByUrlBtn").addEventListener("click", handleAddByUrl);
+      document.getElementById("saveSettingsBtn").addEventListener("click", handleSaveSettings);
+      document.getElementById("closeModalBtn").addEventListener("click", closeModal);
+      document.getElementById("coachGenerateBtn").addEventListener("click", generateGlobalSupport);
+    }
+
+    function switchTab(tab) {
+      state.ui.tab = tab;
+      saveState();
+      document.getElementById("jobsTab").classList.toggle("hidden", tab !== "jobs");
+      document.getElementById("analyticsTab").classList.toggle("hidden", tab !== "analytics");
+      document.getElementById("coachTab").classList.toggle("hidden", tab !== "coach");
+      document.querySelectorAll(".bottom-nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
+      if (tab === "analytics") renderAnalytics();
+    }
+
+    function hydrateSettings() {
+      document.getElementById("apiKeyInput").value = state.settings.anthropicApiKey || "";
+      document.getElementById("extractModelInput").value = state.settings.extractModel || "";
+      document.getElementById("assistModelInput").value = state.settings.assistModel || "";
+      switchTab(state.ui.tab || "jobs");
+    }
+
+    function handleSaveSettings() {
+      state.settings.anthropicApiKey = document.getElementById("apiKeyInput").value.trim();
+      state.settings.extractModel = document.getElementById("extractModelInput").value.trim() || "claude-opus-4-1-20250805";
+      state.settings.assistModel = document.getElementById("assistModelInput").value.trim() || "claude-3-5-haiku-latest";
+      saveState();
+      alert("AI settings saved locally.");
+    }
+
+    function scoreClass(score) {
+      if (score >= 7) return "score-strong";
+      if (score >= 4) return "score-medium";
+      return "score-low";
+    }
+
+    function renderJobs() {
+      const root = document.getElementById("jobsList");
+      if (!state.jobs.length) {
+        root.innerHTML = "<div class='panel'><strong>No jobs yet.</strong> Run the pipeline or add a URL manually.</div>";
+        return;
+      }
+      root.innerHTML = state.jobs.map((job, idx) => renderJobCard(job, idx)).join("");
+      bindJobCardEvents();
+    }
+
+    function renderJobCard(job, idx) {
+      const rounds = (job.interview_rounds || []).map((round, i) => `
+        <div class="interview-item">
+          <div><strong>${escapeHtml(round.stage || "Stage")}</strong> - ${escapeHtml(round.date || "Date n/a")}</div>
+          <div>${escapeHtml(round.interviewer || "Interviewer n/a")} | Outcome: ${escapeHtml(round.outcome || "pending")}</div>
+          <button data-action="delete-round" data-url="${encodeURIComponent(job.url)}" data-idx="${i}">Remove round</button>
+        </div>
+      `).join("");
+
+      const score = Number(job.fit_score || 0);
+      return `
+      <article class="job-card" data-url="${encodeURIComponent(job.url)}">
+        <h3 class="title">${escapeHtml(job.title || "Untitled role")}</h3>
+        <div class="muted">${escapeHtml(job.company || "Unknown company")}</div>
+        <div class="meta">
+          <span class="chip ${scoreClass(score)}">Fit ${score}/10</span>
+          <span class="chip">${escapeHtml(job.location || "Unknown location")}</span>
+          <span class="chip">Posted ${escapeHtml(job.posted || "n/a")}</span>
+          <span class="chip">${escapeHtml(job.source || "source")}</span>
+        </div>
+        <div class="row">
+          <select class="grow" data-action="status" data-url="${encodeURIComponent(job.url)}">
+            ${STATUS_FLOW.map(s => `<option value="${s}" ${job.status === s ? "selected" : ""}>${s}</option>`).join("")}
+          </select>
+          <a href="${escapeHtml(job.url || "#")}" target="_blank" rel="noopener noreferrer"><button>Open posting</button></a>
+        </div>
+        <div style="margin-top:8px">
+          <label class="muted">Notes</label>
+          <textarea data-action="notes" data-url="${encodeURIComponent(job.url)}">${escapeHtml(job.notes || "")}</textarea>
+        </div>
+        <div style="margin-top:8px">
+          <strong>Interview rounds</strong>
+          ${rounds || "<div class='muted'>No rounds logged yet.</div>"}
+          <button data-action="add-round" data-url="${encodeURIComponent(job.url)}">Add interview round</button>
+        </div>
+        <div class="ai-grid">
+          ${renderAiButton("cover-letter", "Cover letter", job.url)}
+          ${renderAiButton("interview-prep", "Interview prep", job.url)}
+          ${renderAiButton("voice-sim", "Voice simulation", job.url)}
+          ${renderAiButton("dossier", "Company dossier", job.url)}
+          ${renderAiButton("cv-tailor", "CV tailoring", job.url)}
+          ${renderAiButton("emotional", "Emotional support", job.url)}
+        </div>
+        ${idx === 0 ? "<div class='muted' style='margin-top:8px'>Top recommendation based on current scoring.</div>" : ""}
+      </article>`;
+    }
+
+    function renderAiButton(action, label, url) {
+      return `<button data-action="${action}" data-url="${encodeURIComponent(url)}">${label}</button>`;
+    }
+
+    function bindJobCardEvents() {
+      document.querySelectorAll("[data-action='status']").forEach(el => {
+        el.addEventListener("change", (e) => updateStatus(decodeURIComponent(e.target.dataset.url), e.target.value));
+      });
+      document.querySelectorAll("[data-action='notes']").forEach(el => {
+        el.addEventListener("change", (e) => updateNotes(decodeURIComponent(e.target.dataset.url), e.target.value));
+      });
+      document.querySelectorAll("[data-action='add-round']").forEach(el => {
+        el.addEventListener("click", () => addInterviewRound(decodeURIComponent(el.dataset.url)));
+      });
+      document.querySelectorAll("[data-action='delete-round']").forEach(el => {
+        el.addEventListener("click", () => deleteInterviewRound(decodeURIComponent(el.dataset.url), Number(el.dataset.idx)));
+      });
+      for (const action of ["cover-letter", "interview-prep", "voice-sim", "dossier", "cv-tailor", "emotional"]) {
+        document.querySelectorAll(`[data-action='${action}']`).forEach(el => {
+          el.addEventListener("click", () => runJobAiAction(action, decodeURIComponent(el.dataset.url)));
+        });
+      }
+    }
+
+    function findJob(url) {
+      return state.jobs.find(j => j.url === url);
+    }
+
+    function updateStatus(url, status) {
+      const job = findJob(url);
+      if (!job) return;
+      job.status_history = job.status_history || [];
+      job.status_history.push({ at: new Date().toISOString(), to: status });
+      job.status = status;
+      saveState();
+      renderAnalytics();
+    }
+
+    function updateNotes(url, notes) {
+      const job = findJob(url);
+      if (!job) return;
+      job.notes = notes;
+      saveState();
+    }
+
+    function addInterviewRound(url) {
+      const job = findJob(url);
+      if (!job) return;
+      const date = prompt("Round date (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
+      if (!date) return;
+      const interviewer = prompt("Interviewer name:", "");
+      const stage = prompt("Stage (phone/hr/technical/manager/final):", "phone");
+      const outcome = prompt("Outcome (pending/pass/fail):", "pending");
+      job.interview_rounds = job.interview_rounds || [];
+      job.interview_rounds.push({ date, interviewer: interviewer || "", stage: stage || "", outcome: outcome || "pending" });
+      job.status = "interview";
+      job.status_history = job.status_history || [];
+      job.status_history.push({ at: new Date().toISOString(), to: "interview" });
+      saveState();
+      renderJobs();
+      renderAnalytics();
+    }
+
+    function deleteInterviewRound(url, idx) {
+      const job = findJob(url);
+      if (!job || !Array.isArray(job.interview_rounds)) return;
+      job.interview_rounds.splice(idx, 1);
+      saveState();
+      renderJobs();
+    }
+
+    async function handleAddByUrl() {
+      const url = document.getElementById("jobUrlInput").value.trim();
+      if (!url) return alert("Paste a URL first.");
+      if (findJob(url)) return alert("That URL already exists in your tracker.");
+
+      const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      let pageText = "";
+      try {
+        const jinaUrl = `https://r.jina.ai/http://${normalized.replace(/^https?:\/\//i, "")}`;
+        const res = await fetch(jinaUrl);
+        pageText = (await res.text()).slice(0, 12000);
+      } catch {
+        pageText = "";
+      }
+
+      let extracted = {
+        company: "Unknown",
+        title: "Manual job",
+        location: "Israel",
+        posted: new Date().toISOString().slice(0, 10),
+        description: "Added manually by URL."
+      };
+
+      if (state.settings.anthropicApiKey) {
+        const prompt = [
+          "Extract job details from this posting and return JSON only:",
+          "{company,title,location,posted,description}",
+          "If uncertain, return best-effort values.",
+          `URL: ${normalized}`,
+          `Page text:\n${pageText || "(unavailable)"}`
+        ].join("\n\n");
+        try {
+          const raw = await callAnthropic(state.settings.extractModel, prompt, 0.1, 900);
+          const parsed = extractJson(raw);
+          if (parsed && typeof parsed === "object") extracted = { ...extracted, ...parsed };
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      const manualJob = {
+        ...extracted,
+        url: normalized,
+        source: "manual_url",
+        fit_score: Number(extracted.fit_score || 5),
+        score_reason: extracted.score_reason || "Manually added from URL.",
+        location_ok: true,
+        initial_status: "saved",
+        status: "saved",
+        notes: "",
+        interview_rounds: [],
+        status_history: [{ at: new Date().toISOString(), to: "saved" }],
+        added_at: new Date().toISOString()
+      };
+      state.jobs.unshift(manualJob);
+      saveState();
+      document.getElementById("jobUrlInput").value = "";
+      renderJobs();
+      renderAnalytics();
+    }
+
+    async function runJobAiAction(action, url) {
+      const job = findJob(url);
+      if (!job) return;
+      if (!state.settings.anthropicApiKey) {
+        alert("Save your Anthropic API key in AI settings first.");
+        return;
+      }
+
+      const latestStage = (job.interview_rounds || []).at(-1)?.stage || job.status || "saved";
+      const prompts = {
+        "cover-letter": `Write a tailored cover letter for this role. Keep it concise and specific.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
+        "interview-prep": `Generate interview prep for this role: exactly 8 likely questions, talking points for each, and smart questions to ask the interviewer.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
+        "voice-sim": `Run a stage-aware voice interview simulation script for stage "${latestStage}". Include opener, 6 questions, ideal answer structure, and feedback rubric.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
+        "dossier": `Create a company dossier: product summary, funding/news/culture insights, likely strategic priorities, smart interview questions, and potential red flags.\nJob:\n${JSON.stringify(job)}`,
+        "cv-tailor": `Tailor this CV profile to the job. Return: (1) summary rewrite, (2) 8 bullet improvements, (3) key skill/keyword alignment.\nProfile:\n${PROFILE_TEXT}\nJob:\n${JSON.stringify(job)}`,
+        "emotional": `You are a supportive performance coach. Give context-aware emotional support for this job and stage "${latestStage}". Include mindset reset, practical next action, and confidence script.\nNotes:\n${job.notes || "(none)"}\nJob:\n${JSON.stringify(job)}`
+      };
+
+      openModal(`Generating ${action}...`, "Please wait...");
+      try {
+        const response = await callAnthropic(state.settings.assistModel, prompts[action], 0.4, 1800);
+        openModal(prettyAction(action), response || "No response.");
+      } catch (err) {
+        openModal("AI error", String(err));
+      }
+    }
+
+    async function generateGlobalSupport() {
+      const context = document.getElementById("coachContext").value.trim();
+      if (!state.settings.anthropicApiKey) {
+        alert("Save your Anthropic API key in AI settings first.");
+        return;
+      }
+      const prompt = `Act as a mental coach for an active job search. Use practical CBT-style support and clear actions.\nCandidate profile:\n${PROFILE_TEXT}\nCurrent context:\n${context || "(no extra context)"}`;
+      openModal("Generating support...", "Please wait...");
+      try {
+        const response = await callAnthropic(state.settings.assistModel, prompt, 0.5, 1200);
+        openModal("Global emotional support", response);
+      } catch (err) {
+        openModal("AI error", String(err));
+      }
+    }
+
+    async function callAnthropic(model, prompt, temperature = 0.2, maxTokens = 1200) {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": state.settings.anthropicApiKey,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          temperature,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Anthropic API error ${response.status}: ${await response.text()}`);
+      }
+      const data = await response.json();
+      return (data.content || []).map(c => c.text || "").join("\n").trim();
+    }
+
+    function extractJson(raw) {
+      const text = (raw || "").trim().replace(/^```(?:json)?\n/i, "").replace(/\n```$/, "");
+      const startCandidates = [];
+      for (let i = 0; i < text.length; i += 1) {
+        if (text[i] === "{" || text[i] === "[") startCandidates.push(i);
+      }
+      for (const idx of startCandidates) {
+        try {
+          return JSON.parse(text.slice(idx));
+        } catch {}
+      }
+      return null;
+    }
+
+    function renderAnalytics() {
+      const counts = { saved: 0, applied: 0, interview: 0, offer: 0, rejected: 0 };
+      for (const job of state.jobs) {
+        const s = counts[job.status] !== undefined ? job.status : "saved";
+        counts[s] += 1;
+      }
+
+      const total = state.jobs.length || 1;
+      const appliedRate = (counts.applied / total) * 100;
+      const interviewRate = (counts.interview / total) * 100;
+      const offerRate = (counts.offer / total) * 100;
+      const maxCount = Math.max(...Object.values(counts), 1);
+
+      const waits = [];
+      for (const job of state.jobs) {
+        const start = Date.parse(job.added_at || "");
+        const history = job.status_history || [];
+        const appliedEvent = history.find(h => h.to === "applied");
+        if (!isNaN(start) && appliedEvent?.at) {
+          const end = Date.parse(appliedEvent.at);
+          if (!isNaN(end) && end >= start) waits.push((end - start) / (1000 * 60 * 60 * 24));
+        }
+      }
+      const avgWait = waits.length ? (waits.reduce((a, b) => a + b, 0) / waits.length).toFixed(1) : "-";
+
+      const root = document.getElementById("analyticsContent");
+      root.innerHTML = `
+        <div class="row">
+          <div class="chip">Saved: ${counts.saved}</div>
+          <div class="chip">Applied: ${counts.applied}</div>
+          <div class="chip">Interview: ${counts.interview}</div>
+          <div class="chip">Offer: ${counts.offer}</div>
+          <div class="chip">Rejected: ${counts.rejected}</div>
+        </div>
+        <p><strong>Conversion rates</strong>: Applied ${appliedRate.toFixed(1)}%, Interview ${interviewRate.toFixed(1)}%, Offer ${offerRate.toFixed(1)}%</p>
+        <p><strong>Average wait time to apply</strong>: ${avgWait === "-" ? "-" : `${avgWait} days`}</p>
+        <h3>Funnel</h3>
+        ${Object.entries(counts).map(([label, value]) => `
+          <div class="funnel-row">
+            <div class="muted">${label}: ${value}</div>
+            <div class="funnel-bar" style="width:${Math.max(6, (value / maxCount) * 100)}%"></div>
+          </div>`).join("")}
+      `;
+    }
+
+    function openModal(title, content) {
+      document.getElementById("modalTitle").textContent = title;
+      document.getElementById("modalOutput").textContent = content;
+      document.getElementById("modal").classList.remove("hidden");
+    }
+
+    function closeModal() {
+      document.getElementById("modal").classList.add("hidden");
+    }
+
+    function prettyAction(action) {
+      return ({
+        "cover-letter": "Cover letter",
+        "interview-prep": "Interview prep",
+        "voice-sim": "Voice simulation",
+        "dossier": "Company dossier",
+        "cv-tailor": "CV tailoring",
+        "emotional": "Emotional support"
+      })[action] || "AI output";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+  </script>
+</body>
+</html>
