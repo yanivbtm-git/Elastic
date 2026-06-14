@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "candidate": {
+    "name": "Yaniv Ben Tovim",
+    "email": "yanivbtm@gmail.com",
+    "phone": "+972-54-5573725",
+    "target_roles": [
+      "Project Manager",
+      "Customer Success",
+      "Customer Architect"
+    ],
+    "work_modes": [
+      "remote",
+      "hybrid",
+      "onsite"
+    ],
+    "location_preferences": {
+      "country": "Israel",
+      "region": "Center",
+      "israel_only": true,
+      "remote_scope": "Israel-only remote roles"
+    },
+    "experience_years": 20,
+    "languages": [
+      "Hebrew (Native)",
+      "English (Fluent)"
+    ],
+    "methodologies": [
+      "Agile",
+      "Scrum",
+      "Kanban"
+    ],
+    "tools": [
+      "Jira",
+      "MS Project",
+      "Confluence",
+      "Salesforce",
+      "GitHub Copilot",
+      "Cursor"
+    ],
+    "tech_stack": [
+      "Azure",
+      "AWS",
+      "Java",
+      "SQL",
+      "Oracle",
+      "Elasticsearch",
+      "Kibana",
+      "Linux",
+      "UML",
+      "HTML",
+      "CSS",
+      "REST APIs",
+      "JSON",
+      "Bash"
+    ],
+    "business_domains": [
+      "Cybersecurity",
+      "Risk & Fraud Detection",
+      "Fintech",
+      "Enterprise Software"
+    ],
+    "soft_skills": [
+      "Stakeholder Communication",
+      "Risk Management",
+      "Go-to-Market Alignment",
+      "Team Leadership"
+    ]
+  },
+  "resume": {
+    "source_file": "/home/ubuntu/.cursor/projects/workspace/uploads/Yaniv_Ben_Tovim_CV_4485.pdf",
+    "parsed_onboarding": true
+  },
+  "pipeline": {
+    "single_source_of_truth_file": "scored_jobs.json",
+    "manual_job_policy": {
+      "manual_status_field": "initial_status",
+      "never_delete_manual_jobs": true,
+      "merge_strategy": "pipeline_plus_manual"
+    },
+    "filters": {
+      "minimum_fit_score": 4,
+      "posted_within_days": 30,
+      "require_location_match": true
+    }
+  },
+  "ats_sources": {
+    "greenhouse_boards": [
+      "fireblocks",
+      "forter",
+      "taboola",
+      "cybereason"
+    ],
+    "lever_companies": [],
+    "ashby_organizations": []
+  },
+  "automation": {
+    "github_actions_cron_utc": [
+      "0 6 * * 0-4",
+      "0 14 * * 0-4",
+      "0 22 * * 0-4"
+    ]
+  },
+  "ai_prompts": {
+    "search_prompt_template": "Find CURRENTLY OPEN jobs (posted last 30 days) for: {roles}. Each URL must be a DIRECT link to a specific posting. Return 8-15 as JSON: {company, title, location, url, posted, description}",
+    "scoring_prompt_template": "Evaluate this job for [profile]. Return JSON only: {fit_score 1-10, score_reason, ai_opener, location_ok}. If location not OK -> 0."
+  }
+}

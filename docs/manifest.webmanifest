@@ -1,0 +1,16 @@
+{
+  "name": "AI Job Search Tracker",
+  "short_name": "JobTracker",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fef7ff",
+  "theme_color": "#6750a4",
+  "description": "Material 3 mobile-first AI-assisted job search tracker.",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='24' fill='%236750a4'/%3E%3Ctext x='64' y='76' text-anchor='middle' font-size='58' fill='white'%3EJ%3C/text%3E%3C/svg%3E",
+      "sizes": "128x128",
+      "type": "image/svg+xml"
+    }
+  ]
+}
