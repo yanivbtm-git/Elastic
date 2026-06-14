@@ -85,7 +85,12 @@
     }
   },
   "ats_sources": {
-    "greenhouse_boards": [],
+    "greenhouse_boards": [
+      "fireblocks",
+      "forter",
+      "taboola",
+      "cybereason"
+    ],
     "lever_companies": [],
     "ashby_organizations": []
   },
