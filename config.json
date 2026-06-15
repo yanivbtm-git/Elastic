@@ -83,6 +83,10 @@
       "posted_within_days": 30,
       "require_location_match": true,
       "require_role_title_match": true
+    },
+    "scoring": {
+      "max_ai_candidates_per_run": 40,
+      "disable_ai_after_consecutive_errors": 10
     }
   },
   "ats_sources": {

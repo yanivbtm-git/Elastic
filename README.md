@@ -34,6 +34,11 @@ Pipeline filtering includes:
 - posted-within-30-days requirement
 - role-title match against configured target roles
 
+Rate-limit resilience:
+- Gemini calls retry on transient API errors (429/503/etc.) with backoff.
+- Scoring candidates are capped per run via `pipeline.scoring.max_ai_candidates_per_run`.
+- AI scoring auto-disables for the remainder of a run after too many consecutive model errors.
+
 ## Local run
 
 ```bash
