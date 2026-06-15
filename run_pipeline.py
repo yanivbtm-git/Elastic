@@ -264,6 +264,15 @@ def _title_matches_roles(title: str, roles: list[str]) -> bool:
             "enterprise architect",
             "technical architect",
         ),
+        "solutions architect": (
+            "solutions architect",
+            "solution architect",
+            "customer solutions architect",
+            "enterprise architect",
+            "technical architect",
+            "pre sales architect",
+            "presales architect",
+        ),
     }
 
     requested = [r.lower().strip() for r in roles if r and r.strip()]
@@ -369,6 +378,38 @@ def _scoring_settings(config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(cfg, dict):
         return defaults
     return {**defaults, **cfg}
+
+
+def _search_settings(config: dict[str, Any]) -> dict[str, Any]:
+    defaults = {
+        "max_results_per_query": 8,
+        "seed_queries": [],
+        "additional_role_terms": [],
+    }
+    cfg = config.get("pipeline", {}).get("search", {})
+    if not isinstance(cfg, dict):
+        return defaults
+    merged = {**defaults, **cfg}
+    if not isinstance(merged.get("seed_queries"), list):
+        merged["seed_queries"] = []
+    if not isinstance(merged.get("additional_role_terms"), list):
+        merged["additional_role_terms"] = []
+    return merged
+
+
+def _dedupe_string_list(items: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        text = (item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
 
 
 def _gemini_generate(
@@ -571,13 +612,26 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
         return []
 
     location_scope = candidate.get("location_preferences", {}).get("country", "Israel")
+    search_cfg = _search_settings(config)
+    max_results = max(1, int(search_cfg.get("max_results_per_query", 8)))
+    role_terms = _dedupe_string_list(
+        [str(item) for item in roles] +
+        [str(item) for item in search_cfg.get("additional_role_terms", [])]
+    )
+    seed_queries = _dedupe_string_list([str(item) for item in search_cfg.get("seed_queries", [])])
+
     web_hits: list[dict[str, str]] = []
-    for role in roles:
+    for role in role_terms:
         query = (
             f"{role} {location_scope} open role posted in last month "
             "site:greenhouse.io OR site:jobs.lever.co OR site:ashbyhq.com"
         )
-        web_hits.extend(web_search(query, max_results=8))
+        web_hits.extend(web_search(query, max_results=max_results))
+        time.sleep(0.3)
+
+    for query in seed_queries:
+        q = query.replace("{location}", location_scope)
+        web_hits.extend(web_search(q, max_results=max_results))
         time.sleep(0.3)
 
     # Deduplicate URL-level hits.
@@ -594,7 +648,7 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
         config.get("ai_prompts", {}).get("search_prompt_template", DEFAULT_SEARCH_PROMPT)
     )
     # Prompt text includes literal JSON braces, so we avoid str.format.
-    main_prompt = prompt_template.replace("{roles}", ", ".join(roles))
+    main_prompt = prompt_template.replace("{roles}", ", ".join(role_terms))
     if not os.getenv("GEMINI_API_KEY"):
         _log("GEMINI_API_KEY missing; using heuristic search extraction.")
         return _heuristic_jobs_from_hits(dedup_hits, roles, location_scope)
@@ -621,7 +675,7 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
             raise ValueError("Expected list from Opus search output")
     except Exception as exc:  # pylint: disable=broad-except
         _log(f"Gemini search failed, falling back to heuristics: {exc}")
-        return _heuristic_jobs_from_hits(dedup_hits, roles, location_scope)
+        return _heuristic_jobs_from_hits(dedup_hits, role_terms, location_scope)
 
     normalized: list[dict[str, Any]] = []
     for item in parsed:

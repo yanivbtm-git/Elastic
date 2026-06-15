@@ -7,7 +7,8 @@
     "target_roles": [
       "Project Manager",
       "Customer Success",
-      "Customer Architect"
+      "Customer Architect",
+      "Solutions Architect"
     ],
     "work_modes": [
       "remote",
@@ -87,6 +88,18 @@
     "scoring": {
       "max_ai_candidates_per_run": 40,
       "disable_ai_after_consecutive_errors": 10
+    },
+    "search": {
+      "max_results_per_query": 8,
+      "additional_role_terms": [
+        "Solutions Architect",
+        "Customer Success Manager",
+        "Technical Account Manager",
+        "Project Manager"
+      ],
+      "seed_queries": [
+        "project manager Customer Success customer architect Solutions Architect roles in {location} in the last 30 days"
+      ]
     }
   },
   "ats_sources": {
