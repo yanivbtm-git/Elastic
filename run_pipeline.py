@@ -57,6 +57,7 @@ DEFAULT_SCORE_MODELS = (
     "gemini-3.5-flash",
     "gemini-2.0-flash",
 )
+RETRYABLE_GEMINI_HTTP_CODES = {429, 500, 502, 503, 504}
 
 USER_STATE_FIELDS = {
     "status",
@@ -359,6 +360,17 @@ def _privacy_settings(config: dict[str, Any]) -> dict[str, Any]:
     return {**defaults, **cfg}
 
 
+def _scoring_settings(config: dict[str, Any]) -> dict[str, Any]:
+    defaults = {
+        "max_ai_candidates_per_run": 40,
+        "disable_ai_after_consecutive_errors": 10,
+    }
+    cfg = config.get("pipeline", {}).get("scoring", {})
+    if not isinstance(cfg, dict):
+        return defaults
+    return {**defaults, **cfg}
+
+
 def _gemini_generate(
     model: str,
     prompt: str,
@@ -419,29 +431,63 @@ def _gemini_generate_with_fallback(
     prompt: str,
     temperature: float = 0.2,
     max_tokens: int = 1400,
+    max_attempts_per_model: int = 4,
 ) -> tuple[str, str]:
     if not models:
         raise RuntimeError("No Gemini model candidates configured")
 
     last_error: Exception | None = None
     for model in models:
-        try:
-            text = _gemini_generate(
-                model=model,
-                prompt=prompt,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return text, model
-        except urllib.error.HTTPError as exc:
-            last_error = exc
-            if exc.code in (400, 404):
-                _log(f"Gemini model '{model}' unavailable ({exc.code}); trying next model.")
-                continue
-            raise
-        except Exception as exc:  # pylint: disable=broad-except
-            last_error = exc
-            break
+        backoff_s = 1.5
+        last_http_code: int | None = None
+        for attempt in range(1, max_attempts_per_model + 1):
+            try:
+                text = _gemini_generate(
+                    model=model,
+                    prompt=prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return text, model
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                last_http_code = exc.code
+                if exc.code in (400, 404):
+                    _log(f"Gemini model '{model}' unavailable ({exc.code}); trying next model.")
+                    break
+                if exc.code in RETRYABLE_GEMINI_HTTP_CODES and attempt < max_attempts_per_model:
+                    _log(
+                        f"Gemini transient error {exc.code} on model '{model}' "
+                        f"(attempt {attempt}/{max_attempts_per_model}); retrying in {backoff_s:.1f}s."
+                    )
+                    time.sleep(backoff_s)
+                    backoff_s = min(backoff_s * 2, 20.0)
+                    continue
+                if exc.code in RETRYABLE_GEMINI_HTTP_CODES:
+                    _log(
+                        f"Gemini transient error {exc.code} persisted on model '{model}'; "
+                        "trying next model."
+                    )
+                    break
+                raise
+            except urllib.error.URLError as exc:
+                last_error = exc
+                if attempt < max_attempts_per_model:
+                    _log(
+                        f"Gemini network error on model '{model}' "
+                        f"(attempt {attempt}/{max_attempts_per_model}); retrying in {backoff_s:.1f}s."
+                    )
+                    time.sleep(backoff_s)
+                    backoff_s = min(backoff_s * 2, 20.0)
+                    continue
+                break
+            except Exception as exc:  # pylint: disable=broad-except
+                last_error = exc
+                break
+
+        if last_http_code in (429, 503):
+            # Light cooldown between models when provider is throttling.
+            time.sleep(1.0)
 
     if last_error is not None:
         raise last_error
@@ -768,14 +814,18 @@ def score_jobs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text:
     prompt_template = (
         config.get("ai_prompts", {}).get("scoring_prompt_template", DEFAULT_SCORE_PROMPT)
     )
+    scoring_cfg = _scoring_settings(config)
     scored: list[dict[str, Any]] = []
     use_ai = bool(os.getenv("GEMINI_API_KEY"))
     model_candidates = _model_candidates("GEMINI_FLASH_MODEL", DEFAULT_SCORE_MODELS)
     working_model: str | None = None
+    ai_disabled_due_errors = False
+    consecutive_ai_failures = 0
+    failure_limit = int(scoring_cfg.get("disable_ai_after_consecutive_errors", 10))
 
     for idx, job in enumerate(jobs, start=1):
         payload: dict[str, Any]
-        if use_ai:
+        if use_ai and not ai_disabled_due_errors:
             try:
                 candidates = (
                     [working_model] + [m for m in model_candidates if m != working_model]
@@ -783,11 +833,20 @@ def score_jobs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text:
                     else model_candidates
                 )
                 payload, used_model = _score_with_gemini(job, profile_text, prompt_template, models=candidates)
+                consecutive_ai_failures = 0
                 if used_model != working_model:
                     working_model = used_model
                     _log(f"score_jobs() using Gemini model: {working_model}")
             except Exception as exc:  # pylint: disable=broad-except
-                _log(f"Scoring fallback for job {idx}/{len(jobs)}: {exc}")
+                consecutive_ai_failures += 1
+                if consecutive_ai_failures <= 5 or consecutive_ai_failures % 10 == 0:
+                    _log(f"Scoring fallback for job {idx}/{len(jobs)}: {exc}")
+                if consecutive_ai_failures >= failure_limit:
+                    ai_disabled_due_errors = True
+                    _log(
+                        f"Disabling AI scoring for remaining jobs after "
+                        f"{consecutive_ai_failures} consecutive model errors."
+                    )
                 payload = _fallback_score(job, roles, prefs)
         else:
             payload = _fallback_score(job, roles, prefs)
@@ -932,6 +991,44 @@ def dedupe_jobs(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def _prefilter_jobs_for_scoring(config: dict[str, Any], jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    filt = config.get("pipeline", {}).get("filters", {})
+    roles = config.get("candidate", {}).get("target_roles", [])
+    prefs = config.get("candidate", {}).get("location_preferences", {})
+    require_role_title_match = bool(filt.get("require_role_title_match", True))
+    require_location = bool(filt.get("require_location_match", True))
+    days_window = int(filt.get("posted_within_days", 30))
+    now = dt.datetime.now(dt.timezone.utc)
+    scoring_cfg = _scoring_settings(config)
+    max_candidates = max(1, int(scoring_cfg.get("max_ai_candidates_per_run", 40)))
+
+    filtered: list[dict[str, Any]] = []
+    for job in jobs:
+        if require_role_title_match and not _title_matches_roles(job.get("title", ""), roles):
+            continue
+        if require_location and not _location_ok(job.get("location", ""), prefs):
+            continue
+        posted_dt = _parse_date(job.get("posted"))
+        if posted_dt is not None and (now - posted_dt).days > days_window:
+            continue
+        filtered.append(job)
+
+    filtered.sort(
+        key=lambda j: (
+            _normalize_posted(j.get("posted")),
+            j.get("company", ""),
+            j.get("title", ""),
+        ),
+        reverse=True,
+    )
+    if len(filtered) > max_candidates:
+        _log(
+            f"Scoring pool reduced from {len(filtered)} to {max_candidates} "
+            "candidates to avoid API throttling."
+        )
+    return filtered[:max_candidates]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run AI job search pipeline.")
     parser.add_argument("--auto-push", action="store_true", help="Commit and push generated outputs.")
@@ -962,8 +1059,11 @@ def main() -> int:
     discovered = dedupe_jobs(search_results + ats_results)
     _log(f"Discovered {len(discovered)} unique jobs.")
 
+    scoring_pool = _prefilter_jobs_for_scoring(config, discovered)
+    _log(f"Prepared {len(scoring_pool)} candidates for scoring.")
+
     _log("Running score_jobs() ...")
-    scored = score_jobs(config, discovered, score_profile_text)
+    scored = score_jobs(config, scoring_pool, score_profile_text)
     _log(f"Scored {len(scored)} jobs.")
 
     _log("Running filter_jobs() ...")
