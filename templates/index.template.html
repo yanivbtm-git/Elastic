@@ -186,8 +186,8 @@
           <div style="margin-top:10px">
             <div class="row">
               <input id="apiKeyInput" class="grow" type="password" placeholder="Gemini API key (stored in localStorage)" />
-              <input id="extractModelInput" class="grow" placeholder="Extract model (default: gemini-1.5-pro-latest)" />
-              <input id="assistModelInput" class="grow" placeholder="Assistant model (default: gemini-1.5-flash-latest)" />
+              <input id="extractModelInput" class="grow" placeholder="Extract model (default: gemini-2.5-pro)" />
+              <input id="assistModelInput" class="grow" placeholder="Assistant model (default: gemini-2.5-flash)" />
               <button id="saveSettingsBtn">Save settings</button>
             </div>
             <div class="row" style="margin-top:8px">
@@ -266,8 +266,8 @@
         jobs: [],
         settings: {
           geminiApiKey: "",
-          extractModel: "gemini-1.5-pro-latest",
-          assistModel: "gemini-1.5-flash-latest",
+          extractModel: "gemini-2.5-pro",
+          assistModel: "gemini-2.5-flash",
           shareFullProfile: UI_PROFILE_OPT_IN_DEFAULT
         },
         ui: { tab: "jobs" }
@@ -354,8 +354,8 @@
 
     function handleSaveSettings() {
       state.settings.geminiApiKey = document.getElementById("apiKeyInput").value.trim();
-      state.settings.extractModel = document.getElementById("extractModelInput").value.trim() || "gemini-1.5-pro-latest";
-      state.settings.assistModel = document.getElementById("assistModelInput").value.trim() || "gemini-1.5-flash-latest";
+      state.settings.extractModel = document.getElementById("extractModelInput").value.trim() || "gemini-2.5-pro";
+      state.settings.assistModel = document.getElementById("assistModelInput").value.trim() || "gemini-2.5-flash";
       state.settings.shareFullProfile = !!document.getElementById("shareFullProfileInput").checked;
       saveState();
       alert("AI settings saved locally.");

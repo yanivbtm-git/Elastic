@@ -54,6 +54,9 @@ Set in GitHub repository secrets:
 - optional model overrides:
   - `GEMINI_PRO_MODEL`
   - `GEMINI_FLASH_MODEL`
+  - recommended values:
+    - `GEMINI_PRO_MODEL=gemini-2.5-pro`
+    - `GEMINI_FLASH_MODEL=gemini-2.5-flash`
 
 Without API key, pipeline still runs with heuristic search parsing and fallback scoring.
 

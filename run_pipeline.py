@@ -47,6 +47,16 @@ DEFAULT_SCORE_PROMPT = (
     "Evaluate this job for [profile]. Return JSON only: "
     "{fit_score 1-10, score_reason, ai_opener, location_ok}. If location not OK -> 0."
 )
+DEFAULT_SEARCH_MODELS = (
+    "gemini-2.5-pro",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash",
+)
+DEFAULT_SCORE_MODELS = (
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
+    "gemini-2.0-flash",
+)
 
 USER_STATE_FIELDS = {
     "status",
@@ -387,6 +397,57 @@ def _gemini_generate(
     return "\n".join(texts).strip()
 
 
+def _model_candidates(env_name: str, defaults: tuple[str, ...]) -> list[str]:
+    raw = os.getenv(env_name, "").strip()
+    parsed: list[str] = []
+    if raw:
+        parsed.extend([item.strip() for item in raw.split(",") if item.strip()])
+    parsed.extend(defaults)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for model in parsed:
+        key = model.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(model)
+    return deduped
+
+
+def _gemini_generate_with_fallback(
+    models: list[str],
+    prompt: str,
+    temperature: float = 0.2,
+    max_tokens: int = 1400,
+) -> tuple[str, str]:
+    if not models:
+        raise RuntimeError("No Gemini model candidates configured")
+
+    last_error: Exception | None = None
+    for model in models:
+        try:
+            text = _gemini_generate(
+                model=model,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return text, model
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code in (400, 404):
+                _log(f"Gemini model '{model}' unavailable ({exc.code}); trying next model.")
+                continue
+            raise
+        except Exception as exc:  # pylint: disable=broad-except
+            last_error = exc
+            break
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Gemini generation failed with no explicit error")
+
+
 def web_search(query: str, max_results: int = 10) -> list[dict[str, str]]:
     encoded = urllib.parse.quote_plus(query)
     url = f"https://duckduckgo.com/html/?q={encoded}"
@@ -492,7 +553,7 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
         _log("GEMINI_API_KEY missing; using heuristic search extraction.")
         return _heuristic_jobs_from_hits(dedup_hits, roles, location_scope)
 
-    model = os.getenv("GEMINI_PRO_MODEL", "gemini-1.5-pro-latest")
+    model_candidates = _model_candidates("GEMINI_PRO_MODEL", DEFAULT_SEARCH_MODELS)
     prompt = (
         f"{main_prompt}\n\n"
         "Use these web search candidates as context and only keep likely direct posting URLs.\n"
@@ -500,7 +561,13 @@ def search_jobs(config: dict[str, Any]) -> list[dict[str, Any]]:
         f"Candidates JSON:\n{json.dumps(dedup_hits, ensure_ascii=False)}"
     )
     try:
-        raw = _gemini_generate(model=model, prompt=prompt, temperature=0.1, max_tokens=2200)
+        raw, used_model = _gemini_generate_with_fallback(
+            models=model_candidates,
+            prompt=prompt,
+            temperature=0.1,
+            max_tokens=2200,
+        )
+        _log(f"search_jobs() used Gemini model: {used_model}")
         parsed = _extract_json_block(raw)
         if isinstance(parsed, dict):
             parsed = parsed.get("jobs", [])
@@ -673,18 +740,23 @@ def _score_with_gemini(
     job: dict[str, Any],
     profile_text: str,
     prompt_template: str,
-    model: str,
-) -> dict[str, Any]:
+    models: list[str],
+) -> tuple[dict[str, Any], str]:
     prompt = (
         f"{prompt_template}\n\n"
         f"Profile:\n{profile_text}\n\n"
         f"Job:\n{json.dumps(job, ensure_ascii=False)}"
     )
-    raw = _gemini_generate(model=model, prompt=prompt, temperature=0.1, max_tokens=900)
+    raw, used_model = _gemini_generate_with_fallback(
+        models=models,
+        prompt=prompt,
+        temperature=0.1,
+        max_tokens=900,
+    )
     parsed = _extract_json_block(raw)
     if not isinstance(parsed, dict):
         raise ValueError("Expected JSON object for score payload")
-    return parsed
+    return parsed, used_model
 
 
 def score_jobs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text: str) -> list[dict[str, Any]]:
@@ -698,13 +770,22 @@ def score_jobs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text:
     )
     scored: list[dict[str, Any]] = []
     use_ai = bool(os.getenv("GEMINI_API_KEY"))
-    model = os.getenv("GEMINI_FLASH_MODEL", "gemini-1.5-flash-latest")
+    model_candidates = _model_candidates("GEMINI_FLASH_MODEL", DEFAULT_SCORE_MODELS)
+    working_model: str | None = None
 
     for idx, job in enumerate(jobs, start=1):
         payload: dict[str, Any]
         if use_ai:
             try:
-                payload = _score_with_gemini(job, profile_text, prompt_template, model=model)
+                candidates = (
+                    [working_model] + [m for m in model_candidates if m != working_model]
+                    if working_model
+                    else model_candidates
+                )
+                payload, used_model = _score_with_gemini(job, profile_text, prompt_template, models=candidates)
+                if used_model != working_model:
+                    working_model = used_model
+                    _log(f"score_jobs() using Gemini model: {working_model}")
             except Exception as exc:  # pylint: disable=broad-except
                 _log(f"Scoring fallback for job {idx}/{len(jobs)}: {exc}")
                 payload = _fallback_score(job, roles, prefs)
