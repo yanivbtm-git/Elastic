@@ -81,7 +81,8 @@
     "filters": {
       "minimum_fit_score": 4,
       "posted_within_days": 30,
-      "require_location_match": true
+      "require_location_match": true,
+      "require_role_title_match": true
     }
   },
   "ats_sources": {
