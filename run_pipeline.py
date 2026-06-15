@@ -805,6 +805,7 @@ def build_docs(config: dict[str, Any], jobs: list[dict[str, Any]], profile_text:
         .replace("__PROFILE_SAFE_TEXT__", json.dumps(safe_profile_text))
         .replace("__UI_PROFILE_OPT_IN_DEFAULT__", json.dumps(_privacy_settings(config).get("ui_full_profile_opt_in_default", False)))
         .replace("__GENERATED_AT__", _utcnow_iso())
+        .replace("__SW_VERSION__", str(int(time.time())))
         .replace(
             "__CANDIDATE_NAME__",
             str(config.get("candidate", {}).get("name", "Candidate")),

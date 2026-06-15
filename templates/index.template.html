@@ -166,7 +166,7 @@
 </head>
 <body>
   <header class="appbar">
-    <h1>AI Job Search Engine - __CANDIDATE_NAME__</h1>
+    <h1>AI Job Search Engine</h1>
     <small>Generated: __GENERATED_AT__</small>
   </header>
 
@@ -257,7 +257,7 @@
       renderAnalytics();
       bindEvents();
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("sw.js").catch(() => null);
+        navigator.serviceWorker.register(`sw.js?v=__SW_VERSION__`).catch(() => null);
       }
     }
 
@@ -311,8 +311,14 @@
         localByUrl.delete(base.url);
       }
 
-      // Keep local-only jobs (for "Add by URL" manual entries).
-      for (const orphan of localByUrl.values()) merged.push(orphan);
+      // Keep only local-only manual jobs, not stale pipeline leftovers.
+      for (const orphan of localByUrl.values()) {
+        const isManual =
+          !!orphan.initial_status ||
+          orphan.source === "manual_url" ||
+          orphan.manual === true;
+        if (isManual) merged.push(orphan);
+      }
 
       state.jobs = merged;
       saveState();

@@ -1,4 +1,4 @@
-# Candidate Profile - Yaniv Ben Tovim
+# Candidate Profile
 
 ## Target Roles
 - Project Manager

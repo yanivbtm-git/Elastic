@@ -1,6 +1,24 @@
 const CACHE_NAME = "ai-job-tracker-v1";
 const CORE_ASSETS = ["./", "./index.html", "./manifest.webmanifest"];
 
+function shouldUseNetworkFirst(request) {
+  const url = new URL(request.url);
+  if (request.mode === "navigate") return true;
+  if (url.pathname.endsWith("/index.html")) return true;
+  if (url.pathname.endsWith("/sw.js")) return true;
+  return false;
+}
+
+async function fetchAndCache(request) {
+  const response = await fetch(request);
+  if (response && response.status === 200 && response.type === "basic") {
+    const clone = response.clone();
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(request, clone);
+  }
+  return response;
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
@@ -24,16 +42,22 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    (async () => {
+      if (shouldUseNetworkFirst(event.request)) {
+        try {
+          return await fetchAndCache(event.request);
+        } catch {
+          return (await caches.match(event.request)) || (await caches.match("./index.html"));
+        }
+      }
+
+      const cached = await caches.match(event.request);
       if (cached) return cached;
-      return fetch(event.request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== "basic") return response;
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return response;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
+      try {
+        return await fetchAndCache(event.request);
+      } catch {
+        return caches.match("./index.html");
+      }
+    })()
   );
 });
