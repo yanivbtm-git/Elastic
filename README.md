@@ -39,6 +39,10 @@ Rate-limit resilience:
 - Scoring candidates are capped per run via `pipeline.scoring.max_ai_candidates_per_run`.
 - AI scoring auto-disables for the remainder of a run after too many consecutive model errors.
 
+Search tuning:
+- `pipeline.search.additional_role_terms` lets you add role aliases (for example, "Solutions Architect").
+- `pipeline.search.seed_queries` lets you inject custom query phrases.
+
 ## Local run
 
 ```bash
