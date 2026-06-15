@@ -50,3 +50,18 @@ Set in GitHub repository secrets:
   - `GEMINI_FLASH_MODEL`
 
 Without API key, pipeline still runs with heuristic search parsing and fallback scoring.
+
+## Privacy mode
+
+Privacy defaults are enabled in `config.json`:
+
+- `privacy.redact_personal_data: true`
+- `privacy.pipeline_profile_mode: "summary_only"`
+- `privacy.ui_full_profile_opt_in_default: false`
+
+Behavior:
+
+- Pipeline scoring sends only a redacted skills/experience summary.
+- Personal contact details (email/phone) are stripped from AI profile context.
+- In the UI, full profile sharing is OFF by default and requires explicit opt-in
+  in AI settings.

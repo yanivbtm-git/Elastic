@@ -101,6 +101,11 @@
       "0 22 * * 0-4"
     ]
   },
+  "privacy": {
+    "redact_personal_data": true,
+    "pipeline_profile_mode": "summary_only",
+    "ui_full_profile_opt_in_default": false
+  },
   "ai_prompts": {
     "search_prompt_template": "Find CURRENTLY OPEN jobs (posted last 30 days) for: {roles}. Each URL must be a DIRECT link to a specific posting. Return 8-15 as JSON: {company, title, location, url, posted, description}",
     "scoring_prompt_template": "Evaluate this job for [profile]. Return JSON only: {fit_score 1-10, score_reason, ai_opener, location_ok}. If location not OK -> 0."
