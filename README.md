@@ -28,6 +28,12 @@ by pipeline refreshes. Merge behavior is:
 
 `pipeline results + preserved manual entries`.
 
+Pipeline filtering includes:
+- minimum fit score threshold
+- location match requirement
+- posted-within-30-days requirement
+- role-title match against configured target roles
+
 ## Local run
 
 ```bash

@@ -219,6 +219,55 @@ def _location_ok(location: str, prefs: dict[str, Any]) -> bool:
     return False
 
 
+def _title_matches_roles(title: str, roles: list[str]) -> bool:
+    normalized_title = re.sub(r"[^a-z0-9\s]", " ", (title or "").lower())
+    normalized_title = re.sub(r"\s+", " ", normalized_title).strip()
+    if not normalized_title:
+        return False
+
+    # Canonical role families + common recruiter phrasing.
+    role_signals: dict[str, tuple[str, ...]] = {
+        "project manager": (
+            "project manager",
+            "program manager",
+            "delivery manager",
+            "implementation manager",
+            "technical project manager",
+            "pmo",
+            "project lead",
+        ),
+        "customer success": (
+            "customer success",
+            "customer success manager",
+            "csm",
+            "technical account manager",
+            "customer account manager",
+            "client success",
+            "customer experience manager",
+        ),
+        "customer architect": (
+            "customer architect",
+            "solutions architect",
+            "solution architect",
+            "customer solutions architect",
+            "enterprise architect",
+            "technical architect",
+        ),
+    }
+
+    requested = [r.lower().strip() for r in roles if r and r.strip()]
+    active_signals: set[str] = set()
+    for role in requested:
+        if role in role_signals:
+            active_signals.update(role_signals[role])
+        else:
+            active_signals.add(role)
+
+    if not active_signals:
+        return False
+    return any(signal in normalized_title for signal in active_signals)
+
+
 def _job_id(job: dict[str, Any]) -> str:
     key = (job.get("url") or "") + "|" + (job.get("title") or "") + "|" + (job.get("company") or "")
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
@@ -683,10 +732,14 @@ def filter_jobs(config: dict[str, Any], jobs: list[dict[str, Any]]) -> list[dict
     min_score = int(filt.get("minimum_fit_score", 4))
     days_window = int(filt.get("posted_within_days", 30))
     require_location = bool(filt.get("require_location_match", True))
+    require_role_title_match = bool(filt.get("require_role_title_match", True))
+    roles = config.get("candidate", {}).get("target_roles", [])
     now = dt.datetime.now(dt.timezone.utc)
 
     filtered: list[dict[str, Any]] = []
     for job in jobs:
+        if require_role_title_match and not _title_matches_roles(job.get("title", ""), roles):
+            continue
         if int(job.get("fit_score", 0)) < min_score:
             continue
         if require_location and not bool(job.get("location_ok", False)):
